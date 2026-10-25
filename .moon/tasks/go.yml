@@ -1,0 +1,115 @@
+$schema: "https://moonrepo.dev/schemas/v2/tasks.json"
+
+inheritedBy:
+    language: "go"
+
+fileGroups:
+    configs:
+        - "go.mod"
+        - "go.sum"
+        - ".golangci.yml"
+    sources:
+        - "**/*.go"
+    tests:
+        - "**/*_test.go"
+    migrations:
+        - "sql/migrations/*.sql"
+    generated:
+        - "**/*.sql.go"
+        - "**/*.gen.go"
+        - "**/*_gen.go"
+
+tasks:
+    install:
+        script: "go mod download && go mod tidy"
+        inputs:
+            - "@group(configs)"
+        options:
+            cache: false
+
+    install-tools:
+        script: "go install -C ./tools tool"
+        options:
+            cache: false
+
+    build:
+        command: "go build -o bin/ ./..."
+        inputs:
+            - "@group(configs)"
+            - "@group(sources)"
+        outputs:
+            - "bin/"
+
+    dev:
+        command: "air"
+
+    debug:
+        command: "dlv debug --headless --listen=:2345 --api-version=2 --accept-multiclient ."
+        preset: "server"
+
+    generate:
+        deps:
+            - "generate-go"
+            - "generate-sqlc"
+
+    generate-go:
+        command: "go generate ./..."
+        preset: "utility"
+
+    generate-sqlc:
+        script: "rm -rf generated && sqlc generate"
+        preset: "utility"
+        outputs:
+            - "generated"
+
+    lint:
+        command: "golangci-lint run --fix"
+        preset: "utility"
+
+    lint-check:
+        command: "golangci-lint run"
+        inputs:
+            - "@group(configs)"
+            - "@group(sources)"
+            - "@group(tests)"
+
+    format:
+        command: "go fmt ./..."
+        preset: "utility"
+
+    format-check:
+        script: 'test -z "$(gofmt -l .)"'
+
+    test:
+        command: "go test ./..."
+        args:
+            - "-race"
+            - "-count=1"
+            - "-coverprofile=coverage.out"
+        inputs:
+            - "@group(configs)"
+            - "@group(sources)"
+            - "@group(tests)"
+            - "@group(migrations)"
+
+    migrate:
+        command: "goose -dir sql/migrations up"
+        preset: "utility"
+
+    migrate-down:
+        command: "goose -dir sql/migrations down"
+        preset: "utility"
+
+    migration-create:
+        command: "goose"
+        args:
+            - "-dir"
+            - "sql/migrations"
+            - "create"
+            - "$1"
+            - "sql"
+        preset: "utility"
+
+    go:
+        command: "go"
+        preset: "utility"

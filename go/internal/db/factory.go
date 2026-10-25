@@ -1,0 +1,46 @@
+package db
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	"github.com/exaring/otelpgx"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/sharktype/base-go/internal/logger"
+	"go.uber.org/zap"
+)
+
+const (
+	driver         = "postgres"
+	startupTimeout = 10 * time.Second
+)
+
+func NewPool(ctx context.Context, cfg Config) (*pgxpool.Pool, error) {
+	logger.Debug("connecting to database and testing connection...", zap.String("driver", driver))
+
+	startupCtx, cancel := context.WithTimeout(ctx, startupTimeout)
+	defer cancel()
+
+	poolConfig, err := pgxpool.ParseConfig(cfg.DSN)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse database configuration: %w", err)
+	}
+
+	poolConfig.ConnConfig.Tracer = otelpgx.NewTracer()
+
+	pool, err := pgxpool.NewWithConfig(startupCtx, poolConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create database pool: %w", err)
+	}
+
+	if err := pool.Ping(startupCtx); err != nil {
+		pool.Close()
+
+		return nil, fmt.Errorf("failed to ping database after connection: %w", err)
+	}
+
+	logger.Info("database connection successful", zap.String("driver", driver))
+
+	return pool, nil
+}

@@ -1,0 +1,102 @@
+package routing
+
+import (
+	"net/http"
+	"time"
+
+	"github.com/danielgtaylor/huma/v2"
+	"github.com/danielgtaylor/huma/v2/adapters/humachi"
+	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/httprate"
+	"github.com/sharktype/base-go/internal/bugtracker"
+)
+
+const (
+	globalRateLimit = 120
+	rateLimitWindow = time.Minute
+)
+
+func recoverer(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		defer func() {
+			recovered := recover()
+			if recovered == nil {
+				return
+			}
+
+			if recovered == http.ErrAbortHandler {
+				panic(recovered)
+			}
+
+			bugtracker.PanicRequest(
+				request,
+				middleware.GetReqID(request.Context()),
+				recovered,
+			)
+
+			if request.Header.Get("Connection") != "Upgrade" {
+				writer.WriteHeader(http.StatusInternalServerError)
+			}
+		}()
+
+		next.ServeHTTP(writer, request)
+	})
+}
+
+// rateLimitGlobally throttles every request from one client IP.
+//
+// This is the volumetric backstop and must be less restictive than the operation-level limits.
+func rateLimitGlobally(next http.Handler) http.Handler {
+	return httprate.LimitBy(globalRateLimit, rateLimitWindow, clientIPKey)(next)
+}
+
+// rateLimit throttles each operation per client IP.
+func rateLimit(limit int) func(huma.Context, func(huma.Context)) {
+	limiter := httprate.NewRateLimiter(limit, rateLimitWindow)
+	return func(ctx huma.Context, next func(huma.Context)) {
+		request, writer := humachi.Unwrap(ctx)
+
+		ip, _ := clientIPKey(request)
+
+		key := ip + " " + ctx.Operation().OperationID
+		if limiter.RespondOnLimit(writer, request, key) {
+			return
+		}
+
+		next(ctx)
+	}
+}
+
+// clientIP rewrites RemoteAddr to the rightmost X-Forwarded-For hop.
+//
+// We make the assumption that either the API sits behind exactly one proxy e.g. Cloudflare, or
+// the service is deployed as a standalone server communicating over HTTP in client-trusted
+// environments or in a private Docker network.
+//
+// The proxy is expected to append the client to X-Forwarded-For and cannot be directly modified by
+// the client; if it is, only the rightmost hop is trusted so a prepended value is ignored/dropped
+// and replaced with the actual client IP. Anything that doesn't append the XFF header must
+// therefore be trusted or rate limits can be bypassed by a slightly crafty attacker. Requests
+// without X-Forwarded-For keep their peer address.
+//
+// The rate limiters key on the resolved client IP through CanonicalizeIP, which collapses IPv6
+// to its /64. If you were to key on the raw address, one IPv6 client would get 2^64 buckets.
+//
+// As always, a reminder: production deployments should put a "real" rate limiter at the edge layer
+// and not rely on this basic middleware implementation, especially when there are multiple
+// replicas behind a load balancer.
+func clientIP(next http.Handler) http.Handler {
+	return middleware.ClientIPFromXFFTrustedProxies(1)(http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			if ip := middleware.GetClientIP(r.Context()); ip != "" {
+				r.RemoteAddr = ip
+			}
+
+			next.ServeHTTP(w, r)
+		},
+	))
+}
+
+func clientIPKey(request *http.Request) (string, error) {
+	return httprate.CanonicalizeIP(middleware.GetClientIP(request.Context())), nil
+}

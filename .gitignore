@@ -6,14 +6,15 @@
 
 # testing
 **/coverage
+**/coverage.out
 
 # output
 **/out/
 **/.cache
 **/build
 **/dist
-**/generated/**
-!**/generated/.gitkeep
+**/tmp
+**/bin
 
 # misc
 .DS_Store
@@ -63,3 +64,7 @@ target/
 Cargo.lock
 **/*.rs.bk
 *.pdb
+
+# moon
+.moon/cache
+.moon/docker

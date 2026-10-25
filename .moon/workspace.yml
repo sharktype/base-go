@@ -1,0 +1,11 @@
+projects:
+    globFormat: "source-path"
+    globs:
+        - "go"
+
+constraints:
+    enforceLayerRelationships: true
+
+vcs:
+    defaultBranch: "main"
+    provider: "github"
