@@ -32,4 +32,4 @@ configured, or the app won't even start.
   use it rather than expensive observability platforms while starting. I may implement this in the
   future.
 
-Updates to this will be applied retroactively as my applications start to use them.
+Updates to this will be applied after my applications start to use them.
