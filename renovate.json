@@ -42,6 +42,22 @@
 			"automergeType": "branch"
 		},
 		{
+			"groupName": "task: go toolchain patch update",
+			"matchManagers": ["proto"],
+			"matchDepNames": ["go"],
+			"matchUpdateTypes": ["patch"],
+			"automerge": true,
+			"automergeType": "branch"
+		},
+		{
+			"groupName": "task: proto toolchain safe update",
+			"matchManagers": ["proto"],
+			"matchDepNames": ["!/^go$/"],
+			"matchUpdateTypes": ["patch", "minor"],
+			"automerge": true,
+			"automergeType": "branch"
+		},
+		{
 			"groupName": "task: github actions update",
 			"matchManagers": ["github-actions"],
 			"separateMajorMinor": false,
